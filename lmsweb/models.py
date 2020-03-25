@@ -14,14 +14,12 @@ from peewee import (  # type: ignore
     ForeignKeyField,
     IntegerField,
     ManyToManyField,
-    PostgresqlDatabase,
-    SqliteDatabase,
     TextField,
 )
-from playhouse.signals import Model, pre_save
+from playhouse.signals import pre_save
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from lms.lmsweb import webapp
+from lms.lmsweb import webapp, db_wrapper, database
 
 
 class RoleOptions(enum.Enum):
@@ -33,25 +31,7 @@ class RoleOptions(enum.Enum):
         return self.value
 
 
-if webapp.debug:
-    database = SqliteDatabase('db.sqlite')
-elif webapp.env == 'production':
-    db_config = {
-        'database': webapp.config['DB_NAME'],
-        'user': webapp.config['DB_USER'],
-        'port': webapp.config['DB_PORT'],
-        'host': webapp.config['DB_HOST_IP'],
-        'password': webapp.config['DB_PASSWORD'],
-    }
-    database = PostgresqlDatabase(**db_config)
-
-
-class BaseModel(Model):
-    class Meta:
-        database = database
-
-
-class Role(BaseModel):
+class Role(db_wrapper.Model):
     name = CharField(unique=True, choices=(
         (RoleOptions.ADMINISTRATOR.value,
          RoleOptions.ADMINISTRATOR.value),
@@ -92,7 +72,7 @@ class Role(BaseModel):
         return self.is_staff or self.is_administrator
 
 
-class User(UserMixin, BaseModel):
+class User(UserMixin, db_wrapper.Model):
     username = CharField(unique=True)
     fullname = CharField()
     mail_address = CharField(unique=True)
@@ -116,7 +96,7 @@ def on_save_handler(model_class, instance, created):
         instance.password = generate_password_hash(instance.password)
 
 
-class Exercise(BaseModel):
+class Exercise(db_wrapper.Model):
     subject = CharField()
     date = DateTimeField()
     users = ManyToManyField(User, backref='exercises')
@@ -126,7 +106,7 @@ class Exercise(BaseModel):
         return self.subject
 
 
-class Solution(BaseModel):
+class Solution(db_wrapper.Model):
     exercise = ForeignKeyField(Exercise, backref='solutions')
     solver = ForeignKeyField(User, backref='solutions')
     checker = ForeignKeyField(User, null=True, backref='solutions')
@@ -138,11 +118,11 @@ class Solution(BaseModel):
     json_data_str = TextField()
 
 
-class CommentText(BaseModel):
+class CommentText(db_wrapper.Model):
     text = TextField(unique=True)
 
 
-class Comment(BaseModel):
+class Comment(db_wrapper.Model):
     commenter = ForeignKeyField(User, backref='comments')
     timestamp = DateTimeField(default=datetime.now)
     line_number = IntegerField(constraints=[Check('line_number >= 1')])
